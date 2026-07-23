@@ -19,14 +19,26 @@ Parameters:
     Type: String
     Default: v2.39.2
     Description: Docker Compose plugin version used when the AMI package is unavailable.
-  GitHubRepository:
+  GitHubRepositoryOwner:
     Type: String
-    Default: SinisterGiant/SatelliteTelemetryDashboard
-    Description: owner/repository trusted by the GitHub Actions OIDC role.
-  GitHubBranch:
+    Default: SinisterGiant
+    Description: GitHub account or organization trusted by the GitHub Actions OIDC role.
+  GitHubRepositoryName:
     Type: String
-    Default: main
-    Description: Branch allowed to assume the GitHub Actions role.
+    Default: SatelliteTelemetryDashboard
+    Description: GitHub repository trusted by the GitHub Actions OIDC role.
+  GitHubRepositoryOwnerId:
+    Type: String
+    Default: '202392798'
+    Description: Immutable GitHub owner ID used in the OIDC subject claim.
+  GitHubRepositoryId:
+    Type: String
+    Default: '1310333356'
+    Description: Immutable GitHub repository ID used in the OIDC subject claim.
+  GitHubEnvironment:
+    Type: String
+    Default: aws-poc
+    Description: GitHub Actions environment used by the deployment workflow.
   BackendRepositoryName:
     Type: String
     Default: satellite-telemetry-backend
@@ -153,8 +165,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              StringLike:
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepositoryOwner}@${GitHubRepositoryOwnerId}/${GitHubRepositoryName}@${GitHubRepositoryId}:environment:${GitHubEnvironment}
       Policies:
         - PolicyName: DeploySatelliteTelemetry
           PolicyDocument:

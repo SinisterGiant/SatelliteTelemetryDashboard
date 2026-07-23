@@ -105,7 +105,7 @@ class TelemetryRepository:
         page_size: int,
         sort_by: str,
         sort_order: str,
-    ) -> tuple[list[TelemetryEntry], int]:
+    ) -> tuple[list[TelemetryEntry], int, dict[str, int]]:
         where: list[str] = []
         values: list[str | int] = []
         if satellite_id:
@@ -124,6 +124,11 @@ class TelemetryRepository:
             total = self._connection.execute(
                 f"SELECT COUNT(*) FROM telemetry {where_sql}", values
             ).fetchone()[0]
+            status_counts = {status_name: 0 for status_name in ("healthy", "degraded", "critical")}
+            for row in self._connection.execute(
+                f"SELECT status, COUNT(*) AS count FROM telemetry {where_sql} GROUP BY status", values
+            ).fetchall():
+                status_counts[row["status"]] = int(row["count"])
             rows = self._connection.execute(
                 f"""
                 SELECT * FROM telemetry
@@ -133,7 +138,7 @@ class TelemetryRepository:
                 """,
                 [*values, page_size, offset],
             ).fetchall()
-        return [self._to_entry(row) for row in rows], int(total)
+        return [self._to_entry(row) for row in rows], int(total), status_counts
 
     def delete(self, satellite_id: str) -> bool:
         with self._lock, self._connection:

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { ApiError } from "./api";
 import { Filters } from "./components/Filters";
 import { Pagination } from "./components/Pagination";
 import { TelemetryForm } from "./components/TelemetryForm";
@@ -40,11 +39,7 @@ function App() {
 
   const telemetry = useTelemetry(query);
   const totalItems = telemetry.pagination?.totalItems ?? 0;
-  const statusSummary = useMemo(() => {
-    const counts = { healthy: 0, degraded: 0, critical: 0 };
-    telemetry.data.forEach((entry) => { counts[entry.status] += 1; });
-    return counts;
-  }, [telemetry.data]);
+  const statusSummary = telemetry.summary ?? { healthy: 0, degraded: 0, critical: 0 };
 
   function handleSort(field: SortField) {
     setQuery((current) => ({

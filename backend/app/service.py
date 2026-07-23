@@ -120,7 +120,7 @@ class TelemetryService:
         page_size_value: str | None,
         sort_by: str | None,
         sort_order: str | None,
-    ) -> tuple[list[TelemetryEntry], int, int, int, str, str]:
+    ) -> tuple[list[TelemetryEntry], int, dict[str, int], int, int, str, str]:
         if satellite_id is not None:
             satellite_id = satellite_id.strip()
             if len(satellite_id) > 64:
@@ -154,7 +154,7 @@ class TelemetryService:
                 fields={"sortOrder": "must be asc or desc"},
             )
 
-        entries, total = self._repository.list(
+        entries, total, status_counts = self._repository.list(
             satellite_id=satellite_id,
             status=status,
             page=page,
@@ -162,7 +162,7 @@ class TelemetryService:
             sort_by=selected_sort,
             sort_order=selected_order,
         )
-        return entries, total, page, page_size, selected_sort, selected_order
+        return entries, total, status_counts, page, page_size, selected_sort, selected_order
 
     @staticmethod
     def _parse_int(

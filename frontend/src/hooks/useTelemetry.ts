@@ -6,6 +6,7 @@ import type { TelemetryEntry, TelemetryPayload, TelemetryQuery, TelemetryListRes
 interface State {
   data: TelemetryEntry[];
   pagination: TelemetryListResponse["pagination"] | null;
+  summary: TelemetryListResponse["summary"] | null;
   loading: boolean;
   error: string | null;
   submitting: boolean;
@@ -26,6 +27,7 @@ type Action =
 const initialState: State = {
   data: [],
   pagination: null,
+  summary: null,
   loading: true,
   error: null,
   submitting: false,
@@ -38,7 +40,7 @@ function reducer(state: State, action: Action): State {
     case "fetch-start":
       return { ...state, loading: true, error: null };
     case "fetch-success":
-      return { ...state, loading: false, error: null, data: action.payload.data, pagination: action.payload.pagination };
+      return { ...state, loading: false, error: null, data: action.payload.data, pagination: action.payload.pagination, summary: action.payload.summary };
     case "fetch-error":
       return { ...state, loading: false, error: action.message };
     case "submit-start":

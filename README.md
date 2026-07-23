@@ -135,6 +135,20 @@ Optional query parameters:
 curl 'http://localhost:5001/telemetry?status=healthy&page=1&pageSize=10&sortBy=timestamp&sortOrder=desc'
 ```
 
+The response includes a `summary` object containing status counts across all records matching the current filters, independent of the requested page:
+
+```json
+{
+  "summary": {
+    "healthy": 12,
+    "degraded": 5,
+    "critical": 3
+  }
+}
+```
+
+The dashboard uses these aggregate counts for the Healthy and Needs Attention cards while the table continues to render only the current page.
+
 ### `POST /telemetry`
 
 The request body must be JSON with all five fields:

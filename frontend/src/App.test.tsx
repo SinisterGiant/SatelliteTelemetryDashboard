@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import App from "./App";
 
@@ -6,7 +6,8 @@ const response = {
   data: [
     { satelliteId: "RL-001", timestamp: "2026-07-23T19:00:00.000Z", altitude: 450.5, velocity: 7.7, status: "healthy" },
   ],
-  pagination: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1, sortBy: "timestamp", sortOrder: "desc" },
+  pagination: { page: 1, pageSize: 10, totalItems: 20, totalPages: 2, sortBy: "timestamp", sortOrder: "desc" },
+  summary: { healthy: 12, degraded: 5, critical: 3 },
 };
 
 describe("Satellite telemetry dashboard", () => {
@@ -22,6 +23,17 @@ describe("Satellite telemetry dashboard", () => {
     expect(screen.getByText("Loading telemetry…")).toBeInTheDocument();
     expect(await screen.findByText("RL-001")).toBeInTheDocument();
     expect(screen.getByText("450.5")).toBeInTheDocument();
+  });
+
+  it("shows status counts across all matching records, not only the current page", async () => {
+    render(<App />);
+    await screen.findByText("RL-001");
+
+    const summary = within(screen.getByRole("region", { name: "Telemetry summary" }));
+    const healthyCard = summary.getByText("Healthy").closest(".summary-card");
+    const attentionCard = summary.getByText("Needs attention").closest(".summary-card");
+    expect(within(healthyCard as HTMLElement).getByText("12")).toBeInTheDocument();
+    expect(within(attentionCard as HTMLElement).getByText("8")).toBeInTheDocument();
   });
 
   it("shows an API error", async () => {

@@ -31,6 +31,13 @@ export interface Pagination {
 export interface TelemetryListResponse {
   data: TelemetryEntry[];
   pagination: Pagination;
+  summary: TelemetryStatusSummary;
+}
+
+export interface TelemetryStatusSummary {
+  healthy: number;
+  degraded: number;
+  critical: number;
 }
 
 export interface TelemetryPayload {

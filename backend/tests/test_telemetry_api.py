@@ -53,11 +53,13 @@ def test_filter_pagination_and_sort(client):
     assert response.status_code == 200
     assert response.json["pagination"]["totalItems"] == 3
     assert response.json["pagination"]["totalPages"] == 3
+    assert response.json["summary"] == {"healthy": 3, "degraded": 0, "critical": 0}
     assert response.json["data"][0]["altitude"] == 300
 
     filtered = client.get("/telemetry?satelliteId=RL-B")
     assert filtered.status_code == 200
     assert filtered.json["pagination"]["totalItems"] == 1
+    assert filtered.json["summary"] == {"healthy": 1, "degraded": 0, "critical": 0}
     assert filtered.json["data"][0]["satelliteId"] == "RL-B"
 
 

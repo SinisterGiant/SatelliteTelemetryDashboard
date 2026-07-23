@@ -28,7 +28,7 @@ def _json_body() -> object:
 
 @telemetry_blueprint.get("/telemetry")
 def list_telemetry():
-    entries, total, page, page_size, sort_by, sort_order = _service().list(
+    entries, total, status_counts, page, page_size, sort_by, sort_order = _service().list(
         satellite_id=request.args.get("satelliteId"),
         status=request.args.get("status"),
         page_value=request.args.get("page"),
@@ -46,6 +46,7 @@ def list_telemetry():
             "sortBy": sort_by,
             "sortOrder": sort_order,
         },
+        summary=status_counts,
     )
 
 

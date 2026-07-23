@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.aws.example
 
 # Python
 __pycache__/
@@ -37,3 +38,6 @@ coverage/
 # Take-home artifacts and other local documents
 *.pdf
 test.pdf
+
+# AWS local tooling
+.aws-sam/

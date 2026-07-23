@@ -1,6 +1,6 @@
 # Satellite Telemetry Dashboard
 
-Local-only proof of concept for viewing and managing satellite telemetry. The repository contains a Flask REST API, a React/Vite dashboard, automated tests, and a Docker Compose setup.
+Local-first proof of concept for viewing and managing satellite telemetry. The repository contains a Flask REST API, a React/Vite dashboard, automated tests, a local Docker Compose setup, and an opt-in AWS deployment layer.
 
 ## Architecture
 
@@ -9,6 +9,8 @@ Browser :3000 (React + Nginx)
         │ /api proxy
         ▼
 Flask API :5001 host / :5000 container ── TelemetryService ── SQLite :memory:
+
+AWS uses the same containers, with immutable images in ECR and a single EC2 instance behind CloudFront. The public CloudFront URL forwards `/api/*` to the frontend Nginx proxy, so the browser continues to make same-origin requests.
 ```
 
 The API stores data in a process-local SQLite in-memory database. `satelliteId` is the telemetry table primary key, so each satellite can have only one current telemetry row and no separate generated `id` is returned. Records remain available while the API process is running and are intentionally reset to the 20 seeded satellites (`RL-001` through `RL-020`) when it restarts. Docker runs one Gunicorn worker because multiple workers would each receive a separate in-memory database.
@@ -26,6 +28,8 @@ Open [http://localhost:3000](http://localhost:3000). The direct API is available
 Stop the services with `Ctrl+C`, or run `docker compose down` from another terminal.
 
 To change ports, copy `.env.example` to `.env` and edit the values.
+
+This local workflow does not require AWS credentials, an AWS account, ECR, or CloudFront.
 
 ## Local development without Docker
 
@@ -51,6 +55,68 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173). Vite proxies `/api` requests to the Flask server.
+
+## AWS deployment
+
+The AWS files are additive; they do not replace or modify the local `docker-compose.yml` workflow.
+
+### AWS architecture
+
+```text
+Browser HTTPS
+     │
+     ▼
+CloudFront default HTTPS URL
+     │ HTTP origin
+     ▼
+EC2 :80 ── Frontend Nginx ── Backend :5000 ── SQLite :memory:
+```
+
+The deployment intentionally uses one EC2 instance because SQLite `:memory:` is process-local. The backend remains a single Gunicorn worker, and the data resets to the 20 demo satellites whenever the backend container restarts. The backend port is not exposed publicly.
+
+### One-time AWS infrastructure
+
+The CloudFormation template creates the EC2 instance, Elastic IP, ECR repositories, Systems Manager access, GitHub Actions OIDC role, and CloudFront distribution. Select a public subnet in the target VPC and run:
+
+```bash
+aws cloudformation deploy \
+  --profile default \
+  --region us-west-2 \
+  --stack-name satellite-telemetry-poc \
+  --template-file infra/cloudformation.yml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    VpcId=vpc-xxxxxxxx \
+    SubnetId=subnet-xxxxxxxx
+```
+
+The deployment uses the configured AWS profile only for the one-time infrastructure operation. GitHub Actions uses the generated OIDC role instead of long-lived or root credentials.
+
+Retrieve the values needed by GitHub Actions:
+
+```bash
+aws cloudformation describe-stacks \
+  --profile default \
+  --region us-west-2 \
+  --stack-name satellite-telemetry-poc \
+  --query 'Stacks[0].Outputs'
+```
+
+Create these GitHub Actions secrets for the `aws-poc` environment:
+
+| Secret | CloudFormation output | Purpose |
+| --- | --- | --- |
+| `AWS_DEPLOY_ROLE_ARN` | `GitHubActionsRoleArn` | OIDC role assumed by GitHub Actions |
+| `AWS_EC2_INSTANCE_ID` | `InstanceId` | EC2 target for Systems Manager deployment |
+| `AWS_CLOUDFRONT_DISTRIBUTION_ID` | `CloudFrontDistributionId` | Frontend cache invalidation |
+
+The workflow in `.github/workflows/deploy.yml` builds both existing Dockerfiles, pushes commit-tagged images to ECR, deploys them through Systems Manager, checks `/api/health`, and invalidates the frontend cache. Pushes to `main` trigger deployment; `workflow_dispatch` supports a manual deployment.
+
+The live dashboard URL is the `DashboardUrl` CloudFormation output. CloudFront provides the HTTPS endpoint, while the EC2 origin is intentionally HTTP for this small POC.
+
+### AWS Compose file
+
+`docker-compose.aws.yml` is an AWS-only Compose configuration. It pulls images rather than building locally, maps the frontend to port `80`, and keeps the backend on the internal Compose network. `.env.aws.example` documents the required image variables; it is not needed for local development.
 
 ## API
 
@@ -140,8 +206,12 @@ The test suites cover CRUD behavior, filtering, pagination, sorting, validation,
 - Demo seed data is enabled by default and can be disabled with `SEED_DEMO_DATA=false`.
 - Each startup creates a fresh in-memory dataset containing one row for every satellite from `RL-001` through `RL-020`. Runtime additions and deletions are discarded when the API process or container stops.
 - Docker maps the container API port `5000` to host port `5001` by default because macOS `ControlCenter` commonly occupies host port `5000`. Override this with `BACKEND_PORT` in `.env` if needed.
-- Authentication, authorization, persistent storage, telemetry ingestion, cloud deployment, CI/CD, and production observability are intentionally out of scope for this local POC.
+- The AWS deployment is public and unauthenticated: anyone with the CloudFront URL can create and delete demo telemetry.
+- Authentication, authorization, persistent storage, telemetry ingestion, autoscaling, and production observability remain out of scope.
+- AWS deployment uses a single EC2 instance and runtime-only SQLite so the local POC behavior remains unchanged.
+- CloudFormation and GitHub Actions are optional; local Docker remains the primary developer/test workflow.
 - `test.pdf` and other PDFs are ignored so take-home artifacts are not committed accidentally.
 
-# Time Spend
+# Time Spent
 - To spin up the POC for the Backend and Frontend, it took me about 2 hours
+- About another hour for the hosting

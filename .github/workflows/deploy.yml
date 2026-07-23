@@ -1,0 +1,113 @@
+name: Deploy AWS POC
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 940531748273.dkr.ecr.us-west-2.amazonaws.com
+  BACKEND_REPOSITORY: satellite-telemetry-backend
+  FRONTEND_REPOSITORY: satellite-telemetry-frontend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: aws-poc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: github-actions-satellite-telemetry
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --file backend/Dockerfile --tag "$ECR_REGISTRY/$BACKEND_REPOSITORY:$IMAGE_TAG" backend
+          docker push "$ECR_REGISTRY/$BACKEND_REPOSITORY:$IMAGE_TAG"
+
+      - name: Build and push frontend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --file frontend/Dockerfile \
+            --build-arg VITE_API_BASE_URL=/api \
+            --tag "$ECR_REGISTRY/$FRONTEND_REPOSITORY:$IMAGE_TAG" \
+            frontend
+          docker push "$ECR_REGISTRY/$FRONTEND_REPOSITORY:$IMAGE_TAG"
+
+      - name: Deploy images through Systems Manager
+        id: deploy
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          INSTANCE_ID: ${{ secrets.AWS_EC2_INSTANCE_ID }}
+        run: |
+          compose_b64="$(base64 -w 0 docker-compose.aws.yml)"
+          commands="$(jq -cn \
+            --arg compose "$compose_b64" \
+            --arg region "$AWS_REGION" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg backend "$BACKEND_REPOSITORY" \
+            --arg frontend "$FRONTEND_REPOSITORY" \
+            --arg tag "$IMAGE_TAG" \
+            '{commands:[
+              "set -euo pipefail",
+              "mkdir -p /opt/satellite-telemetry",
+              ("echo " + $compose + " | base64 --decode > /opt/satellite-telemetry/docker-compose.aws.yml"),
+              ("aws ecr get-login-password --region " + $region + " | docker login --username AWS --password-stdin " + $registry),
+              ("cat > /opt/satellite-telemetry/.env.aws <<EOF\nAWS_REGION=" + $region + "\nBACKEND_IMAGE=" + $registry + "/" + $backend + ":" + $tag + "\nFRONTEND_IMAGE=" + $registry + "/" + $frontend + ":" + $tag + "\nSEED_DEMO_DATA=true\nCORS_ORIGINS=*\nEOF"),
+              "cd /opt/satellite-telemetry && docker compose --env-file .env.aws -f docker-compose.aws.yml pull",
+              "cd /opt/satellite-telemetry && docker compose --env-file .env.aws -f docker-compose.aws.yml up -d --remove-orphans",
+              "for attempt in $(seq 1 30); do curl --fail --silent http://localhost/api/health && exit 0; sleep 2; done",
+              "exit 1"
+            ]}')"
+
+          command_id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --instance-ids "$INSTANCE_ID" \
+            --comment "Deploy satellite telemetry ${IMAGE_TAG}" \
+            --parameters "$commands" \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          aws ssm wait command-executed \
+            --command-id "$command_id" \
+            --instance-id "$INSTANCE_ID"
+
+          status="$(aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$INSTANCE_ID" \
+            --query 'Status' \
+            --output text)"
+          if [ "$status" != "Success" ]; then
+            aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" \
+              --output json
+            exit 1
+          fi
+
+      - name: Invalidate CloudFront frontend cache
+        env:
+          DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/index.html" "/assets/*"

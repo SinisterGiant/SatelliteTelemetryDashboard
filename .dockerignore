@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+*.pdf
+node_modules
+dist
+__pycache__
+.pytest_cache
+.venv

@@ -185,12 +185,13 @@ Resources:
                   - !GetAtt BackendRepository.Arn
                   - !GetAtt FrontendRepository.Arn
               - Effect: Allow
-                Action:
-                  - ssm:SendCommand
-                  - ssm:GetCommandInvocation
+                Action: ssm:SendCommand
                 Resource:
-                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/AWS-RunShellScript
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
                   - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${DashboardInstance}
+              - Effect: Allow
+                Action: ssm:GetCommandInvocation
+                Resource: '*'
               - Effect: Allow
                 Action:
                   - cloudfront:CreateInvalidation
